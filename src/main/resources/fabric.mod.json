@@ -1,0 +1,41 @@
+{
+	"schemaVersion": 1,
+	"id": "villager_expansion",
+	"version": "${version}",
+	"name": "Villager Expansion Mod",
+	"description": "Um mod que permite aos villagers expandir suas vilas de forma autônoma, construindo novas estruturas e aumentando sua população ao longo do tempo.",
+	"authors": [
+		"Desenvolvedor"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/modid/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.example.VillagerExpansionMod"
+		],
+		"client": [
+			"com.example.ExampleModClient"
+		]
+	},
+	"mixins": [
+		"modid.mixins.json",
+		{
+			"config": "modid.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.16.10",
+		"minecraft": "~1.21.5",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"suggests": {
+		"another-mod": "*"
+	}
+}
