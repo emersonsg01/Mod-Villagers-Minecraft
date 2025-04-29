@@ -3,11 +3,16 @@ package com.example.mixin;
 import com.example.VillagerExpansionMod;
 import com.example.village.VillageData;
 import com.example.village.exploration.ExplorationTask;
+import com.example.village.inventory.VillagerInventorySystem;
 import com.example.village.mining.MiningTask;
 import net.minecraft.entity.EntityType;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.ai.brain.Activity;
 import net.minecraft.entity.passive.MerchantEntity;
 import net.minecraft.entity.passive.VillagerEntity;
+import net.minecraft.inventory.SimpleInventory;
+import net.minecraft.item.ArmorItem;
+import net.minecraft.item.ItemStack;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -43,6 +48,10 @@ import java.util.UUID;
     private int professionTickCounter = 0;
     private static final int PROFESSION_CHECK_INTERVAL = 60; // A cada 3 segundos
     
+    // Contador para verificações de inventário e equipamentos
+    private int inventoryTickCounter = 0;
+    private static final int INVENTORY_CHECK_INTERVAL = 100; // A cada 5 segundos
+    
     @Inject(method = "tick", at = @At("TAIL"))
     private void onTick(CallbackInfo ci) {
         // Só executa no servidor
@@ -51,6 +60,7 @@ import java.util.UUID;
         expansionTickCounter++;
         taskCheckCounter++;
         professionTickCounter++;
+        inventoryTickCounter++;
         
         // Limita a frequência de verificações de vila
         if (expansionTickCounter % EXPANSION_CHECK_INTERVAL == 0) {
@@ -68,6 +78,12 @@ import java.util.UUID;
         if (professionTickCounter % PROFESSION_CHECK_INTERVAL == 0) {
             // Verifica e atualiza a profissão do villager
             checkVillagerProfession((ServerWorld) this.getWorld());
+        }
+        
+        // Limita a frequência de verificações de inventário
+        if (inventoryTickCounter % INVENTORY_CHECK_INTERVAL == 0) {
+            // Verifica e atualiza o inventário e equipamentos do villager
+            checkVillagerInventory((ServerWorld) this.getWorld());
         }
     }
     
@@ -281,6 +297,27 @@ import java.util.UUID;
             // Não tem profissão, atribui uma profissão personalizada
             // O ProfessionManager cuidará de atribuir uma profissão aleatória
             VillagerExpansionMod.LOGGER.info("Villager " + villagerId + " não tem profissão, atribuindo uma profissão personalizada");
+        }
+    }
+    
+    /**
+     * Verifica e atualiza o inventário e equipamentos do villager
+     * @param world O mundo do servidor
+     */
+    private void checkVillagerInventory(ServerWorld world) {
+        VillagerEntity villager = (VillagerEntity)(Object)this;
+        
+        // Inicializa o inventário do villager se ainda não existir
+        SimpleInventory inventory = VillagerInventorySystem.getInventory(villager);
+        
+        // Chance de tentar equipar armaduras do inventário
+        if (random.nextFloat() < 0.3f) {
+            VillagerInventorySystem.equipArmorFromInventory(villager);
+        }
+        
+        // Chance de tentar armazenar itens em baús
+        if (random.nextFloat() < 0.2f && VillagerInventorySystem.storeItemsInChest(villager, world)) {
+            VillagerExpansionMod.LOGGER.info("Villager " + villager.getUuid() + " armazenou itens em um baú");
         }
     }
 }

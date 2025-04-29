@@ -107,7 +107,7 @@ public class ProfessionManager {
      */
     private void assignRandomProfession(VillagerEntity villager, ServerWorld world) {
         // Escolhe uma profissão aleatória
-        int professionChoice = random.nextInt(4); // 0: Guerreiro, 1: Explorador, 2: Minerador, 3: Construtor
+        int professionChoice = random.nextInt(5); // 0: Guerreiro, 1: Explorador, 2: Minerador, 3: Construtor, 4: Ferreiro
         
         com.example.village.profession.VillagerProfession profession;
         switch (professionChoice) {
@@ -122,6 +122,9 @@ public class ProfessionManager {
                 break;
             case 3:
                 profession = new BuilderProfession();
+                break;
+            case 4:
+                profession = new SmithProfession();
                 break;
             default:
                 profession = new WarriorProfession(); // Padrão: Guerreiro

@@ -5,12 +5,15 @@ import com.example.village.BuildingData;
 import com.example.village.BuildingType;
 import com.example.village.VillageData;
 import com.example.village.builder.BuildTask;
+import com.example.village.inventory.VillagerInventorySystem;
 import net.minecraft.block.BedBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.passive.VillagerEntity;
+import net.minecraft.inventory.SimpleInventory;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.server.world.ServerWorld;
@@ -18,6 +21,8 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.random.Random;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -41,6 +46,15 @@ public class BuilderProfession implements VillagerProfession {
     private boolean isPlacingBed = false;
     private BlockPos targetHousePos = null;
     
+    // Estado de busca de recursos
+    private boolean isGatheringResources = false;
+    private int resourceGatherCooldown = 0;
+    private static final int RESOURCE_GATHER_INTERVAL = 200; // 10 segundos
+    
+    // Recursos necessários para construção
+    private final Map<Item, Integer> requiredResources = new HashMap<>();
+    private boolean hasRequiredResources = false;
+    
     @Override
     public String getName() {
         return "Construtor";
@@ -54,6 +68,9 @@ public class BuilderProfession implements VillagerProfession {
             hasEquipment = true;
         }
         
+        // Tenta equipar armaduras do inventário
+        VillagerInventorySystem.equipArmorFromInventory(villager);
+        
         // Se já está construindo ou colocando cama, continua a tarefa
         if (isBuilding) {
             continueBuildingTask(villager, world);
@@ -63,6 +80,29 @@ public class BuilderProfession implements VillagerProfession {
         if (isPlacingBed) {
             continuePlacingBed(villager, world);
             return;
+        }
+        
+        // Se está buscando recursos, continua essa tarefa
+        if (isGatheringResources) {
+            gatherResourcesFromChests(villager, world);
+            return;
+        }
+        
+        // Verifica se precisa buscar recursos
+        resourceGatherCooldown--;
+        if (resourceGatherCooldown <= 0) {
+            if (!hasRequiredResources) {
+                // Define os recursos necessários para construção
+                requiredResources.clear();
+                requiredResources.put(Items.OAK_PLANKS, 10);
+                requiredResources.put(Items.COBBLESTONE, 15);
+                
+                // Inicia a busca por recursos
+                isGatheringResources = true;
+                VillagerExpansionMod.LOGGER.info("Construtor " + villager.getUuid() + " está buscando recursos para construção");
+                return;
+            }
+            resourceGatherCooldown = RESOURCE_GATHER_INTERVAL;
         }
         
         // Tenta iniciar uma nova tarefa de construção ou colocação de cama
@@ -83,29 +123,8 @@ public class BuilderProfession implements VillagerProfession {
     
     @Override
     public boolean storeItems(VillagerEntity villager, ServerWorld world) {
-        // Procura por baús próximos para armazenar itens
-        BlockPos villagerPos = villager.getBlockPos();
-        int searchRadius = 16;
-        
-        // Procura por baús em um raio ao redor do villager
-        for (int x = -searchRadius; x <= searchRadius; x++) {
-            for (int y = -3; y <= 3; y++) {
-                for (int z = -searchRadius; z <= searchRadius; z++) {
-                    BlockPos pos = villagerPos.add(x, y, z);
-                    
-                    // Verifica se o bloco é um baú
-                    if (world.getBlockState(pos).getBlock().equals(net.minecraft.block.Blocks.CHEST)) {
-                        // Simula o armazenamento de itens (em uma implementação completa, usaríamos o inventário do baú)
-                        VillagerExpansionMod.LOGGER.info("Construtor " + villager.getUuid() + " armazenou materiais em um baú em " + pos);
-                        // Limpa o inventário do villager (simulação)
-                        // Em uma implementação completa, transferiríamos os itens para o baú
-                        return true;
-                    }
-                }
-            }
-        }
-        
-        return false; // Não encontrou baús próximos
+        // Usa o sistema de inventário para armazenar itens
+        return VillagerInventorySystem.storeItemsInChest(villager, world);
     }
     
     /**
@@ -149,6 +168,12 @@ public class BuilderProfession implements VillagerProfession {
             return; // Villager não pertence a nenhuma vila
         }
         
+        // Verifica se tem os recursos necessários para construção
+        if (!hasRequiredResources) {
+            VillagerExpansionMod.LOGGER.info("Construtor " + villager.getUuid() + " não tem recursos suficientes para construção");
+            return;
+        }
+        
         // Verifica se a vila precisa de mais casas
         if (villagerVillage.needsMoreHouses()) {
             // Encontra um local adequado para construção
@@ -159,6 +184,15 @@ public class BuilderProfession implements VillagerProfession {
                 currentBuildPos = buildLocation;
                 buildProgress = 0;
                 VillagerExpansionMod.LOGGER.info("Construtor " + villager.getUuid() + " iniciou construção de casa em " + buildLocation);
+                
+                // Consome os recursos do inventário
+                SimpleInventory inventory = VillagerInventorySystem.getInventory(villager);
+                for (Map.Entry<Item, Integer> entry : requiredResources.entrySet()) {
+                    VillagerInventorySystem.removeItem(villager, entry.getKey(), entry.getValue());
+                }
+                
+                // Reseta o estado de recursos
+                hasRequiredResources = false;
             }
         }
     }
@@ -509,6 +543,71 @@ public class BuilderProfession implements VillagerProfession {
             // world.setBlockState(headPos, bedHead);
             
             VillagerExpansionMod.LOGGER.info("Cama colocada em " + pos + " com direção " + direction);
+        }
+    }
+    
+    /**
+     * Busca recursos em baús próximos para construção
+     * @param villager O villager construtor
+     * @param world O mundo do servidor
+     */
+    private void gatherResourcesFromChests(VillagerEntity villager, ServerWorld world) {
+        BlockPos villagerPos = villager.getBlockPos();
+        int searchRadius = 16;
+        boolean foundAllResources = true;
+        
+        // Verifica quais recursos ainda são necessários
+        for (Map.Entry<Item, Integer> entry : requiredResources.entrySet()) {
+            Item resourceItem = entry.getKey();
+            int requiredAmount = entry.getValue();
+            
+            // Verifica se já tem o recurso no inventário
+            if (VillagerInventorySystem.hasItem(villager, resourceItem, requiredAmount)) {
+                continue; // Já tem este recurso
+            }
+            
+            // Não tem o recurso, tenta encontrar em baús
+            foundAllResources = false;
+            
+            // Procura por baús em um raio ao redor do villager
+            boolean foundResource = false;
+            for (int x = -searchRadius; x <= searchRadius && !foundResource; x++) {
+                for (int y = -3; y <= 3 && !foundResource; y++) {
+                    for (int z = -searchRadius; z <= searchRadius && !foundResource; z++) {
+                        BlockPos pos = villagerPos.add(x, y, z);
+                        
+                        // Verifica se o bloco é um baú
+                        if (world.getBlockState(pos).getBlock().equals(net.minecraft.block.Blocks.CHEST)) {
+                            // Simula a busca pelo recurso no baú
+                            // Em uma implementação completa, verificaríamos o inventário real do baú
+                            if (random.nextFloat() < 0.6f) { // 60% de chance de encontrar o recurso
+                                // Encontrou o recurso, adiciona ao inventário do villager
+                                int foundAmount = random.nextInt(requiredAmount) + 1; // 1 até o necessário
+                                VillagerInventorySystem.addItemToInventory(villager, resourceItem, foundAmount);
+                                
+                                VillagerExpansionMod.LOGGER.info("Construtor " + villager.getUuid() + 
+                                                              " encontrou " + foundAmount + "x " + 
+                                                              resourceItem.getName().getString() + 
+                                                              " em um baú em " + pos);
+                                
+                                foundResource = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Verifica se encontrou todos os recursos necessários
+        if (foundAllResources) {
+            isGatheringResources = false;
+            hasRequiredResources = true;
+            VillagerExpansionMod.LOGGER.info("Construtor " + villager.getUuid() + " reuniu todos os recursos necessários para construção");
+        } else {
+            // Não encontrou todos os recursos, continua procurando na próxima vez
+            isGatheringResources = false;
+            resourceGatherCooldown = RESOURCE_GATHER_INTERVAL / 2; // Tenta novamente em metade do tempo
+            VillagerExpansionMod.LOGGER.info("Construtor " + villager.getUuid() + " não encontrou todos os recursos necessários");
         }
     }
 }
