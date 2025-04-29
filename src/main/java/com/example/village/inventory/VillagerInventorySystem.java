@@ -4,7 +4,7 @@ import com.example.VillagerExpansionMod;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.inventory.SimpleInventory;
-import net.minecraft.item.ArmorItem;
+import net.minecraft.item.armor.ArmorItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
